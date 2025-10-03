@@ -1,115 +1,103 @@
 import React, { useState } from "react";
-import { View, TextInput, Button, Text, StyleSheet, Image, Alert } from "react-native";
-import Clipboard from "@react-native-clipboard/clipboard";
+import { View, TextInput, Button, Text, StyleSheet, Image, Alert, ScrollView } from "react-native";
+import * as Clipboard from "expo-clipboard";
+
+const DATA_IMG_REGEX = /^data:image\/[a-zA-Z0-9.+-]+;base64,[a-zA-Z0-9+/=]+$/;
 
 export default function App() {
   const [text, setText] = useState("");
-  const [clipboardContent, setClipboardContent] = useState("");
-  const [imageUrl, setImageUrl] = useState(null);
+  const [previewText, setPreviewText] = useState("");
+  const [previewImageUri, setPreviewImageUri] = useState(null);
 
-  // Función para validar si el texto es URL de imagen
-  const isValidImageUrl = (url) => {
-    return /(https?:\/\/.*\.(?:png|jpg|jpeg|gif|svg))/i.test(url);
+  const copyText = async () => {
+    await Clipboard.setStringAsync(text);
+    Alert.alert("Copiado", "El texto fue copiado al portapapeles.");
   };
 
-  // Copiar texto o URL al clipboard
-  const handleCopy = () => {
-    Clipboard.setString(text);
-    Alert.alert("Copiado", "Texto copiado al portapapeles!");
-  };
-
-  // Cortar (copiar y limpiar)
-  const handleCut = () => {
-    Clipboard.setString(text);
+  const cutText = async () => {
+    await Clipboard.setStringAsync(text);
     setText("");
-    Alert.alert("Cortado", "Texto cortado al portapapeles!");
+    Alert.alert("Cortado", "El texto fue cortado al portapapeles.");
   };
 
-  // Pegar texto o URL
-  const handlePaste = async () => {
-    const content = await Clipboard.getString();
-    setText(content);
-    // Si el contenido es URL de imagen, mostrar imagen
-    if (isValidImageUrl(content)) {
-      setImageUrl(content);
-    } else {
-      setImageUrl(null);
+  const pasteText = async () => {
+    const value = await Clipboard.getStringAsync();
+    setText(value);
+  };
+
+  const viewClipboard = async () => {
+    // En iOS/Android intentamos imagen nativa primero
+    try {
+      const img = await Clipboard.getImageAsync({ format: "png" }); // iOS/Android
+      if (img && img.data) {
+        setPreviewImageUri(`data:image/${img.format ?? "png"};base64,${img.data}`);
+        setPreviewText("");
+        return;
+      }
+    } catch {
+      // En web o si falla, seguimos con texto
     }
-  };
 
-  // Mostrar contenido del portapapeles y si es imagen, mostrarla
-  const handleShowClipboard = async () => {
-    const content = await Clipboard.getString();
-    setClipboardContent(content);
-    if (isValidImageUrl(content)) {
-      setImageUrl(content);
+    // Fallback a texto (web incluido)
+    const value = await Clipboard.getStringAsync();
+
+    // Si el texto es un data URL de imagen, lo renderizamos
+    if (DATA_IMG_REGEX.test(value.trim())) {
+      setPreviewImageUri(value.trim());
+      setPreviewText("");
     } else {
-      setImageUrl(null);
+      setPreviewImageUri(null);
+      setPreviewText(value);
     }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.label}>Escribe algo o pega una URL de imagen:</Text>
+    <ScrollView contentContainerStyle={styles.container}>
+      <Text style={styles.title}>Demo Clipboard (Texto + Imágenes)</Text>
+
       <TextInput
         style={styles.input}
+        placeholder="Escribí texto o pegá un data URL (data:image/...;base64,...)"
         value={text}
-        onChangeText={(val) => {
-          setText(val);
-          if (!isValidImageUrl(val)) setImageUrl(null);
-        }}
-        placeholder="Ingresa texto o URL aquí"
+        onChangeText={setText}
+        multiline
       />
 
-      <View style={styles.buttons}>
-        <Button title="Copy" onPress={handleCopy} />
-        <Button title="Cut" onPress={handleCut} />
-        <Button title="Paste" onPress={handlePaste} />
-        <Button title="Ver Clipboard" onPress={handleShowClipboard} />
+      <View style={styles.row}>
+        <Button title="Copy" onPress={copyText} />
+        <Button title="Cut" onPress={cutText} />
+        <Button title="Paste" onPress={pasteText} />
+        <Button title="Ver clipboard" onPress={viewClipboard} />
       </View>
 
-      <Text style={styles.result}>Clipboard: {clipboardContent}</Text>
-
-      {/* Mostrar imagen si hay URL válida */}
-      {imageUrl && (
+      {previewImageUri ? (
         <>
-          <Text style={{ marginTop: 15, fontSize: 16 }}>Imagen desde URL pegada:</Text>
-          <Image
-            source={{ uri: imageUrl }}
-            style={{ width: 200, height: 200, marginTop: 10, borderRadius: 10 }}
-            resizeMode="contain"
-          />
+          <Text style={styles.subtitle}>Imagen detectada en el portapapeles:</Text>
+          <Image source={{ uri: previewImageUri }} style={styles.image} resizeMode="contain" />
+        </>
+      ) : (
+        <>
+          <Text style={styles.subtitle}>Contenido del portapapeles (texto):</Text>
+          <View style={styles.previewBox}>
+            <Text selectable>{previewText || "— vacío —"}</Text>
+          </View>
         </>
       )}
-    </View>
+
+      
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: "center",
-    padding: 20,
-    backgroundColor: "#fff",
-  },
-  label: {
-    fontSize: 16,
-    marginBottom: 10,
-  },
+  container: { padding: 16, gap: 12 },
+  title: { fontSize: 20, fontWeight: "600" },
   input: {
-    borderWidth: 1,
-    borderColor: "#aaa",
-    padding: 10,
-    marginBottom: 15,
-    borderRadius: 5,
+    borderWidth: 1, borderColor: "#ccc", padding: 12, borderRadius: 8, minHeight: 80, textAlignVertical: "top"
   },
-  buttons: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 15,
-  },
-  result: {
-    fontSize: 16,
-    marginTop: 10,
-  },
+  row: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+  subtitle: { marginTop: 12, fontWeight: "600" },
+  image: { width: "100%", height: 260, backgroundColor: "#f5f5f5", borderRadius: 8 },
+  previewBox: { padding: 12, borderWidth: 1, borderColor: "#eee", borderRadius: 8, backgroundColor: "#fafafa" },
+  hint: { color: "#555", fontSize: 12 }
 });
